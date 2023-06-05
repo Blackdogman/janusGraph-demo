@@ -15,10 +15,33 @@
     </properties>
 
     <dependencies>
+
+        <!-- https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+            <version>2.6.5</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <version>2.6.5</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <version>2.6.5</version>
+            <scope>test</scope>
+        </dependency>
+
         <!-- https://mvnrepository.com/artifact/org.janusgraph/janusgraph-driver-->
         <dependency>
             <groupId>org.janusgraph</groupId>
-            <artifactId>janusgraph-driver</artifactId>
+            <artifactId>janusgraph-core</artifactId>
             <version>0.6.3</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/org.apache.tinkerpop/gremlin-driver -->
@@ -27,6 +50,14 @@
             <artifactId>gremlin-driver</artifactId>
             <version>3.5.5</version>
         </dependency>
+
+        <!-- https://mvnrepository.com/artifact/cn.hutool/hutool-core -->
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-core</artifactId>
+            <version>5.8.19</version>
+        </dependency>
+
     </dependencies>
 
 </project>
