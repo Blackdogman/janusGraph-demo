@@ -136,4 +136,16 @@ public class HelperTests {
         o5.setId("li0000000015");
         janusGraphHelper.dropEdge(o1, o3);
     }
+
+    @Test
+    public void dropVertexProperty() {
+        MyLineage o1 = new MyLineage();
+        o1.setId("li0000000011");
+        janusGraphHelper.dropVertexProperty(o1, "srcType");
+    }
+
+    @Test
+    public void dropVertexPropertyWithLabel() {
+        janusGraphHelper.dropVertexPropertyWithLabel("Lineage", "srcType");
+    }
 }

@@ -175,13 +175,31 @@ public class JanusGraphHelper {
 
     /**
      * 删除节点的某个属性
-     * @param v 节点对象
+     * @param o 节点对象
      * @param property 节点属性property的key
      * @return 执行结果
      */
-    public Object dropVertexProperty(Object v, String property) {
-        // TODO 需要考虑命中节点的属性移除和全量label的属性移除
-        return null;
+    public Object dropVertexProperty(Object o, String property) {
+        try(GraphTraversalSource g = this.getG()){
+            GraphTraversal<Vertex, Vertex> v = this.locateVertexByPrimary(g, o);
+            return v.properties(property).drop().iterate();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 删除某个label属性的节点的某个property
+     * @param label 节点label
+     * @param property 节点的property
+     * @return 执行结果
+     */
+    public Object dropVertexPropertyWithLabel(String label, String property) {
+        try(GraphTraversalSource g = this.getG()) {
+            return g.V().hasLabel(label).properties(property).drop().iterate();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     /**
