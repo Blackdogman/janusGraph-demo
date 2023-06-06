@@ -1,7 +1,12 @@
 package xyz.rockbdm;
 
 
+import cn.hutool.core.util.ObjUtil;
+import cn.hutool.core.util.StrUtil;
+import com.google.common.collect.Lists;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
+import org.apache.tinkerpop.gremlin.structure.Edge;
+import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,7 +24,7 @@ public class HelperTests {
     @Test
     public void doMy() throws Exception {
         GraphTraversalSource g = janusGraphHelper.getG();
-        g.V().hasLabel("user").has("name", "chy").valueMap();
+        g.tx().commit();
     }
 
     @Test
@@ -44,10 +49,10 @@ public class HelperTests {
     @Test
     public void addVertex() {
         MyLineage lineage = new MyLineage();
-        int total = 10000;
-        for (int i = 1; i < 10000; i++) {
+        int total = 5;
+        for (int i = 1; i <= total; i++) {
             System.out.println("当前执行: " + i + "/" + total);
-            lineage.setId("li000000000" + i);
+            lineage.setId("li000000001" + i);
             lineage.setLineageId("123456");
             lineage.setSourceClassId("Table");
             lineage.setSourceInstId("sourceInstId");
@@ -82,10 +87,53 @@ public class HelperTests {
     }
 
     @Test
+    public void modifyVertex() {
+        MyLineage lineage = new MyLineage();
+        lineage.setId("li0000000002");
+        lineage.setLineageId("114514");
+        Object res = janusGraphHelper.modifyVertexByPrimary(lineage);
+        System.out.println(res);
+    }
+
+    @Test
     public void dropVertexByPrimary() {
         MyLineage lineage = new MyLineage();
         lineage.setId("li0000000002");
         Object res = janusGraphHelper.dropVertexByPrimary(lineage);
         System.out.println(res);
+    }
+
+    @Test
+    public void addEdge() {
+        String label = "Lineage";
+        MyLineage o1 = new MyLineage();
+        o1.setId("li0000000011");
+        MyLineage o2 = new MyLineage();
+        o2.setId("li0000000012");
+        MyLineage o3 = new MyLineage();
+        o3.setId("li0000000013");
+        MyLineage o4 = new MyLineage();
+        o4.setId("li0000000014");
+        MyLineage o5 = new MyLineage();
+        o5.setId("li0000000015");
+        janusGraphHelper.addEdge(o1, o2, label);
+        janusGraphHelper.addEdge(o1, o3, label);
+        janusGraphHelper.addEdge(o5, o3, label);
+    }
+
+    @Test
+    public void dropEdge() {
+        String label = "Lineage";
+        MyLineage o1 = new MyLineage();
+        o1.setId("li0000000011");
+        MyLineage o2 = new MyLineage();
+        o2.setId("li0000000012");
+        MyLineage o3 = new MyLineage();
+        o3.setId("li0000000013");
+        MyLineage o4 = new MyLineage();
+        o4.setId("li0000000014");
+        MyLineage o5 = new MyLineage();
+        o5.setId("li0000000015");
+        janusGraphHelper.dropEdge(o1, o3);
     }
 }
