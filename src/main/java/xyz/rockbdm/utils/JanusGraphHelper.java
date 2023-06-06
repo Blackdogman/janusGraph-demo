@@ -247,10 +247,10 @@ public class JanusGraphHelper {
      * @param o1     来源节点
      * @param o2     目标节点
      * @param label  关系的label
-     * @param params 关系的的属性
+     * @param property 关系的的属性
      * @return 执行结果
      */
-    public Object addEdge(Object o1, Object o2, String label, Map<String, Object> params) {
+    public Object addEdge(Object o1, Object o2, String label, Map<String, Object> property) {
         try (GraphTraversalSource g = this.getG()) {
             // 来源
             Vertex v1 = this.locateVertexByPrimary(g, o1).next();
@@ -259,8 +259,8 @@ public class JanusGraphHelper {
             // 明确关系
             GraphTraversal<Vertex, Edge> gremlin = g.V(v1).addE(label).to(v2);
             // 遍历params去添加edge的property
-            if (!CollUtil.isEmpty(params)) {
-                params.forEach(gremlin::property);
+            if (!CollUtil.isEmpty(property)) {
+                property.forEach(gremlin::property);
             }
             // 提交执行
             gremlin.iterate();
