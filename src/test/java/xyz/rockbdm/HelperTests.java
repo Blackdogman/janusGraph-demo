@@ -1,11 +1,10 @@
 package xyz.rockbdm;
 
 
-import cn.hutool.core.util.ObjUtil;
-import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.google.common.collect.Lists;
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
-import org.apache.tinkerpop.gremlin.structure.Edge;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,24 +23,39 @@ public class HelperTests {
     @Test
     public void doMy() throws Exception {
         GraphTraversalSource g = janusGraphHelper.getG();
-        g.tx().commit();
+        int totalBatch = 500;
+        int batchSize = 100;
+        for (int k = 0; k < totalBatch; k ++) {
+            System.out.println(k + " / " + totalBatch);
+            GraphTraversal<Vertex, Vertex> gremlin = null;
+            for (int i = 0; i < batchSize; i ++){
+                if(i == 0) {
+                    gremlin = g.addV("demo").property("name", k + String.valueOf(i));
+                }else {
+                    gremlin.addV("demo").property("name", k + String.valueOf(i));
+                }
+            }
+            gremlin.iterate();
+            System.out.println("done");
+        }
+    }
+
+    @Test
+    public void doMy2() throws Exception {
+//        mgmt = graph.openManagement()
+//        summary = mgmt.makePropertyKey('booksummary').dataType(String.class).make()
+//        mgmt.buildIndex('booksBySummary', Vertex.class).addKey(summary, Mapping.TEXT.asParameter()).buildMixedIndex("search")
+//        mgmt.commit()
     }
 
     @Test
     public void valueMap() throws Exception {
         List<Object> res = janusGraphHelper.valueMap();
-        for (Object re : res) {
-            ((Map<?, ?>) re).forEach((k, v) -> {
-                System.out.println("k.class: " + k.getClass().getName());
-                System.out.println("k: " + k);
-                System.out.println("v.class: " + v.getClass().getName());
-                System.out.println("v: " + v);
-            });
-        }
+        System.out.println(JSONUtil.toJsonStr(res));
     }
 
     @Test
-    public void queryById() throws Exception {
+    public void queryById() {
         String id = "12528";
         System.out.println(janusGraphHelper.queryById(id));
     }
@@ -147,5 +161,21 @@ public class HelperTests {
     @Test
     public void dropVertexPropertyWithLabel() {
         janusGraphHelper.dropVertexPropertyWithLabel("Lineage", "srcType");
+    }
+
+    @Test
+    public void addVertexBatch() {
+        MyLineage o1 = new MyLineage();
+        o1.setId("li0000000011");
+        MyLineage o2 = new MyLineage();
+        o2.setId("li0000000012");
+        MyLineage o3 = new MyLineage();
+        o3.setId("li0000000013");
+        MyLineage o4 = new MyLineage();
+        o4.setId("li0000000014");
+        MyLineage o5 = new MyLineage();
+        o5.setId("li0000000015");
+        List<Object> oList = Lists.newArrayList(o1,o2,o3,o4,o5);
+        janusGraphHelper.addVertexBatch(oList);
     }
 }

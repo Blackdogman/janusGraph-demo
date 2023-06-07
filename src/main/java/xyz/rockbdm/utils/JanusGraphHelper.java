@@ -2,10 +2,15 @@ package xyz.rockbdm.utils;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import org.apache.commons.configuration2.PropertiesConfiguration;
+import org.apache.commons.configuration2.builder.fluent.Configurations;
+import org.apache.commons.configuration2.ex.ConfigurationException;
+import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Edge;
@@ -15,6 +20,8 @@ import org.springframework.stereotype.Component;
 import xyz.rockbdm.annotation.JGVertex;
 import xyz.rockbdm.annotation.JGVertexField;
 
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
@@ -52,12 +59,31 @@ public class JanusGraphHelper {
      * @return 图操作基类
      */
     public GraphTraversalSource getG() throws Exception {
-        if (!ObjUtil.isNull(this.g)) {
-            // GraphTraversalSource复用
-            return this.g;
+        if (ObjUtil.isNull(this.g)) {
+            // 如果还没有连接过, 先去连接
+            this.remoteConnect();
         }
+        return this.g;
+    }
+
+    /**
+     * 连接janusGraph-server (gremlin-sever)
+     */
+    private void remoteConnect() throws Exception {
         String confPath = StrUtil.isBlank(configPath) ? DEFAULT_CONFIG_PATH : configPath;
-        return traversal().withRemote(confPath);
+        g = traversal().withRemote(confPath);
+    }
+
+    public void getGWithApplicationYml() throws ConfigurationException {
+        final Configurations configs = new Configurations();
+        PropertiesConfiguration config = configs.properties(DEFAULT_CONFIG_PATH);
+        config.getKeys().forEachRemaining(System.out::println);
+    }
+
+    public String getConfigPath() {
+        System.out.println("configPath: " + configPath);
+        System.out.println("DEFAULT_CONFIG_PATH: " + DEFAULT_CONFIG_PATH);
+        return StrUtil.isBlank(configPath) ? DEFAULT_CONFIG_PATH : configPath;
     }
 
     /**
@@ -67,7 +93,6 @@ public class JanusGraphHelper {
      */
     public List<Object> valueMap() throws Exception {
         List<Object> resList = Lists.newArrayList();
-        GraphTraversalSource g = this.getG();
         GraphTraversal<Vertex, Map<Object, Object>> values = g.V().valueMap(true);
         while (values.hasNext()) {
             resList.add(values.next());
@@ -81,21 +106,33 @@ public class JanusGraphHelper {
      * @param id 节点id
      * @return 节点的内容
      */
-    public Object queryById(String id) throws Exception {
-        GraphTraversalSource g = this.getG();
+    public Object queryById(String id) {
         return g.V().hasId(id).valueMap().next();
     }
 
     /**
      * 添加节点
      *
-     * @param v 具有@JGVertex与@JGVertexField注解的对象
+     * @param o 具有@JGVertex与@JGVertexField注解的对象
      * @return 创建响应
      */
-    public Object addVertex(Object v) {
-        try (GraphTraversalSource g = this.getG()) {
-            Class<?> vClazz = v.getClass();
-            String vertexLabel = this.getVertexLabel(vClazz);
+    public Object addVertex(Object o) {
+       return this.addVertex(o, null);
+    }
+
+    /**
+     * 添加节点
+     *
+     * @param o 具有@JGVertex与@JGVertexField注解的对象
+     * @param vertexLabel 创建节点的label
+     * @return 创建响应
+     */
+    public Object addVertex(Object o, String vertexLabel) {
+        try {
+            Class<?> vClazz = o.getClass();
+            if(StrUtil.isBlank(vertexLabel)) {
+                vertexLabel = this.getVertexLabel(vClazz);
+            }
             // 通过addV开启一个创建的GraphTraversal
             GraphTraversal<Vertex, Vertex> gremlin = g.addV(vertexLabel);
 
@@ -105,12 +142,66 @@ public class JanusGraphHelper {
                 if (field.isAnnotationPresent(JGVertexField.class)) {
                     field.setAccessible(true);
                     String fieldLabel = this.getVertexFieldLabel(field);
-                    gremlin.property(fieldLabel, field.get(v));
+                    gremlin.property(fieldLabel, field.get(o));
                 }
             }
             // 提交插入
             return gremlin.iterate();
         } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 批量插入节点数据
+     * @param oList 对象对象集合
+     * @return 执行响应
+     */
+    public <T> Object addVertexBatch(List<T> oList) {
+        return this.addVertexBatch(oList, null);
+    }
+
+    /**
+     * 批量查询节点
+     * @param oList 节点对象集合
+     * @param vertexLabel 节点的label
+     * @return 执行响应
+     */
+    public <T> Object addVertexBatch(List<T> oList, String vertexLabel) {
+        try {
+            int batchSize = 100;
+            List<List<T>> opList = ListUtil.partition(oList, batchSize);
+            for (List<T> batchData : opList) {
+                GraphTraversal<Vertex, Vertex> gremlin = null;
+                for (int i = 0; i < batchData.size(); i++) {
+                    Object o = batchData.get(i);
+                    Class<?> vClazz = o.getClass();
+                    if(StrUtil.isBlank(vertexLabel)) {
+                        vertexLabel = this.getVertexLabel(vClazz);
+                    }
+                    // 通过addV开启一个创建的GraphTraversal
+                    if(i == 0) {
+                        gremlin = g.addV(vertexLabel);
+                    }else {
+                        gremlin.addV(vertexLabel);
+                    }
+
+                    // 处理JGVertex列
+                    Field[] fields = vClazz.getDeclaredFields();
+                    for (Field field : fields) {
+                        if (field.isAnnotationPresent(JGVertexField.class)) {
+                            field.setAccessible(true);
+                            String fieldLabel = this.getVertexFieldLabel(field);
+                            gremlin.property(fieldLabel, field.get(o));
+                        }
+                    }
+                }
+                if(gremlin != null) {
+                    gremlin.iterate();
+                }
+            }
+            return null;
+        }catch (Exception e){
             throw new RuntimeException(e);
         }
     }
@@ -126,7 +217,8 @@ public class JanusGraphHelper {
         // 返回结果集
         List<T> resData = Lists.newArrayList();
         Class<?> vClazz = v.getClass();
-        try (GraphTraversalSource g = this.getG()) {
+        try {
+            
             // 定位到对应的节点
             GraphTraversal<Vertex, Vertex> gremlin = this.locateVertex(g, v);
             // 获取到定位的节点的值
@@ -165,7 +257,8 @@ public class JanusGraphHelper {
      * @param v 删除对象
      */
     public Object dropVertex(Object v) {
-        try (GraphTraversalSource g = this.getG()) {
+        try {
+            
             GraphTraversal<Vertex, Vertex> gremlin = this.locateVertex(g, v);
             return gremlin.drop().iterate();
         } catch (Exception e) {
@@ -175,12 +268,14 @@ public class JanusGraphHelper {
 
     /**
      * 删除节点的某个属性
-     * @param o 节点对象
+     *
+     * @param o        节点对象
      * @param property 节点属性property的key
      * @return 执行结果
      */
     public Object dropVertexProperty(Object o, String property) {
-        try(GraphTraversalSource g = this.getG()){
+        try {
+            
             GraphTraversal<Vertex, Vertex> v = this.locateVertexByPrimary(g, o);
             return v.properties(property).drop().iterate();
         } catch (Exception e) {
@@ -190,12 +285,14 @@ public class JanusGraphHelper {
 
     /**
      * 删除某个label属性的节点的某个property
-     * @param label 节点label
+     *
+     * @param label    节点label
      * @param property 节点的property
      * @return 执行结果
      */
     public Object dropVertexPropertyWithLabel(String label, String property) {
-        try(GraphTraversalSource g = this.getG()) {
+        try {
+            
             return g.V().hasLabel(label).properties(property).drop().iterate();
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -208,7 +305,8 @@ public class JanusGraphHelper {
      * @param v 删除对象
      */
     public Object dropVertexByPrimary(Object v) {
-        try (GraphTraversalSource g = this.getG()) {
+        try {
+            
             GraphTraversal<Vertex, Vertex> gremlin = this.locateVertexByPrimary(g, v);
             return gremlin.drop().iterate();
         } catch (Exception e) {
@@ -223,7 +321,8 @@ public class JanusGraphHelper {
      */
     public Object modifyVertexByPrimary(Object v) {
         Class<?> vClazz = v.getClass();
-        try (GraphTraversalSource g = this.getG()) {
+        try {
+            
             GraphTraversal<Vertex, Vertex> gremlin = this.locateVertexByPrimary(g, v);
             // 处理JGVertex列
             Field[] fields = vClazz.getDeclaredFields();
@@ -262,14 +361,15 @@ public class JanusGraphHelper {
     /**
      * 添加节点关系
      *
-     * @param o1     来源节点
-     * @param o2     目标节点
-     * @param label  关系的label
+     * @param o1       来源节点
+     * @param o2       目标节点
+     * @param label    关系的label
      * @param property 关系的的属性
      * @return 执行结果
      */
     public Object addEdge(Object o1, Object o2, String label, Map<String, Object> property) {
-        try (GraphTraversalSource g = this.getG()) {
+        try {
+            
             // 来源
             Vertex v1 = this.locateVertexByPrimary(g, o1).next();
             // 目标
@@ -308,13 +408,14 @@ public class JanusGraphHelper {
      * o1 != null && o2 == null: 删除以o1为开始节点的所有直接目标关系 <br/>
      * o1 == null && o2 != null: 删除以o2为结束节点的所有直接来源关系 <br/>
      *
-     * @param o1 来源节点
-     * @param o2 目标节点
+     * @param o1    来源节点
+     * @param o2    目标节点
      * @param label 关系的label, 如果为null则会删除所有label的关系
      * @return 执行结果
      */
     public Object dropEdge(Object o1, Object o2, String label) {
-        try (GraphTraversalSource g = this.getG()) {
+        try {
+            
             if (o1 == null && o2 == null) {
                 // 抛出异常
                 throw new Exception("来源与目标节点不能同时为空");
@@ -326,9 +427,9 @@ public class JanusGraphHelper {
                 Vertex v2 = this.locateVertexByPrimary(g, o2).next();
                 GraphTraversal<Vertex, Vertex> vE1 = this.locateVertexByPrimary(g, o1);
                 List<Edge> eList;
-                if(StrUtil.isBlank(label)) {
+                if (StrUtil.isBlank(label)) {
                     eList = vE1.outE().toList();
-                }else {
+                } else {
                     eList = vE1.outE(label).toList();
                 }
                 for (Edge edge : eList) {
@@ -336,7 +437,7 @@ public class JanusGraphHelper {
                     Vertex outVertex = edge.outVertex();
                     boolean inEq = ObjUtil.equals(v1.id(), outVertex.id());
                     boolean outEq = ObjUtil.equals(v2.id(), inVertex.id());
-                    if(inEq && outEq) {
+                    if (inEq && outEq) {
                         // 命中关系, 直接删除
                         Object eId = edge.id();
                         g.E(eId).drop().iterate();
@@ -346,9 +447,9 @@ public class JanusGraphHelper {
             if (o1 != null && o2 == null) {
                 // 删除以o1开始的所有关系
                 GraphTraversal<Vertex, Vertex> v1 = this.locateVertexByPrimary(g, o1);
-                if(StrUtil.isBlank(label)) {
+                if (StrUtil.isBlank(label)) {
                     v1.outE();
-                }else {
+                } else {
                     v1.outE(label);
                 }
                 return v1.drop().iterate();
@@ -356,9 +457,9 @@ public class JanusGraphHelper {
             if (o1 == null && o2 != null) {
                 // 删除以o2结束的所有关系
                 GraphTraversal<Vertex, Vertex> v2 = this.locateVertexByPrimary(g, o2);
-                if(StrUtil.isBlank(label)) {
+                if (StrUtil.isBlank(label)) {
                     v2.inE();
-                }else {
+                } else {
                     v2.inE(label);
                 }
                 return v2.drop().iterate();
@@ -458,5 +559,21 @@ public class JanusGraphHelper {
         String propertyLabel = field.getAnnotation(JGVertexField.class).value();
         // 如果@JGVertexField的value为空, 则使用field的名称作为label
         return StrUtil.isBlank(propertyLabel) ? field.getName() : propertyLabel;
+    }
+
+
+    @PostConstruct
+    public void postConstruct() throws Exception {
+        System.out.println(this.getClass().getName() + "初始化GraphTraversalSource");
+        this.remoteConnect();
+    }
+
+    /**
+     * 当应用销毁时处理的方法
+     */
+    @PreDestroy
+    public void preDestroy() throws Exception {
+        System.out.println(this.getClass().getName() + "销毁前关闭客户端");
+        this.g.close();
     }
 }
