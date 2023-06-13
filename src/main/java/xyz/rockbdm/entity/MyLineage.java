@@ -3,6 +3,8 @@ package xyz.rockbdm.entity;
 import xyz.rockbdm.annotation.JGVertex;
 import xyz.rockbdm.annotation.JGVertexField;
 
+import java.util.Objects;
+
 @JGVertex(value = "Lineage")
 public class MyLineage {
     @JGVertexField(isPrimary = true)
@@ -132,5 +134,18 @@ public class MyLineage {
                 ", srcType='" + srcType + '\'' +
                 ", orderNum=" + orderNum +
                 '}';
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        MyLineage lineage = (MyLineage) o;
+        return Objects.equals(id, lineage.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
     }
 }

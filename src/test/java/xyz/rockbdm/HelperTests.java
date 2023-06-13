@@ -3,17 +3,26 @@ package xyz.rockbdm;
 
 import cn.hutool.json.JSONUtil;
 import com.google.common.collect.Lists;
+import org.apache.tinkerpop.gremlin.process.traversal.Path;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
+import org.apache.tinkerpop.gremlin.structure.Edge;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import xyz.rockbdm.entity.MyLineage;
+import xyz.rockbdm.entity.enums.code.DepthOpt;
 import xyz.rockbdm.utils.JanusGraphHelper;
 
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import static org.apache.tinkerpop.gremlin.process.traversal.P.within;
+import static org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__.*;
 
 @SpringBootTest(classes = WebApplication.class)
 public class HelperTests {
@@ -23,35 +32,16 @@ public class HelperTests {
     @Test
     public void doMy() throws Exception {
         GraphTraversalSource g = janusGraphHelper.getG();
-        int totalBatch = 500;
-        int batchSize = 100;
-        for (int k = 0; k < totalBatch; k ++) {
-            System.out.println(k + " / " + totalBatch);
-            GraphTraversal<Vertex, Vertex> gremlin = null;
-            for (int i = 0; i < batchSize; i ++){
-                if(i == 0) {
-                    gremlin = g.addV("demo").property("name", k + String.valueOf(i));
-                }else {
-                    gremlin.addV("demo").property("name", k + String.valueOf(i));
-                }
-            }
-            gremlin.iterate();
-            System.out.println("done");
-        }
+        GraphTraversal<Vertex, Path> data = g.V().out().path().by();
+        System.out.println(data);
     }
 
     @Test
     public void doMy2() throws Exception {
 //        mgmt = graph.openManagement()
-//        summary = mgmt.makePropertyKey('booksummary').dataType(String.class).make()
-//        mgmt.buildIndex('booksBySummary', Vertex.class).addKey(summary, Mapping.TEXT.asParameter()).buildMixedIndex("search")
+//        summary = mgmt.makePropertyKey("booksummary").dataType(String.class).make()
+//        mgmt.buildIndex("booksBySummary", Vertex.class).addKey(summary, Mapping.TEXT.asParameter()).buildMixedIndex("search")
 //        mgmt.commit()
-    }
-
-    @Test
-    public void valueMap() throws Exception {
-        List<Object> res = janusGraphHelper.valueMap();
-        System.out.println(JSONUtil.toJsonStr(res));
     }
 
     @Test
@@ -131,8 +121,10 @@ public class HelperTests {
         MyLineage o5 = new MyLineage();
         o5.setId("li0000000015");
         janusGraphHelper.addEdge(o1, o2, label);
-        janusGraphHelper.addEdge(o1, o3, label);
-        janusGraphHelper.addEdge(o5, o3, label);
+        janusGraphHelper.addEdge(o2, o3, label);
+        janusGraphHelper.addEdge(o2, o4, label);
+        janusGraphHelper.addEdge(o3, o4, label);
+        janusGraphHelper.addEdge(o4, o5, label);
     }
 
     @Test
@@ -165,17 +157,48 @@ public class HelperTests {
 
     @Test
     public void addVertexBatch() {
-        MyLineage o1 = new MyLineage();
-        o1.setId("li0000000011");
-        MyLineage o2 = new MyLineage();
-        o2.setId("li0000000012");
-        MyLineage o3 = new MyLineage();
-        o3.setId("li0000000013");
-        MyLineage o4 = new MyLineage();
-        o4.setId("li0000000014");
-        MyLineage o5 = new MyLineage();
-        o5.setId("li0000000015");
-        List<Object> oList = Lists.newArrayList(o1,o2,o3,o4,o5);
+        List<MyLineage> oList = Lists.newArrayList();
+        for (int i = 0; i < 500000; i++) {
+            MyLineage o = new MyLineage();
+            o.setId("li" + i);
+            oList.add(o);
+        }
         janusGraphHelper.addVertexBatch(oList);
+    }
+
+    @Test
+    public void count() throws Exception {
+        GraphTraversalSource g = janusGraphHelper.getG();
+        GraphTraversal<Vertex, Long> res = g.V().count();
+        System.out.println(res.next());
+    }
+
+    @Test
+    public void path() throws Exception {
+        GraphTraversalSource g = janusGraphHelper.getG();
+        GraphTraversal<Vertex, Path> res = g.V().has("id", "li0000000015").repeat(in().simplePath()).until(where(loops().is(5).or().inE().count().is(0))).path().by(valueMap());
+        while(res.hasNext()) {
+            Path line = res.next();
+            System.out.println("line_change");
+            System.out.println(line);
+            line.forEach(System.out::println);
+        }
+    }
+
+    @Test
+    public void outE() throws Exception {
+        GraphTraversalSource g = janusGraphHelper.getG();
+        // 4256
+        GraphTraversal<Vertex, Map<String, Object>> res = g.V().as("sourceId","sourceSysId").has("id", within("li0000000012","li0000000011")).out().as("targetId","targetSysId").select("sourceId","sourceSysId","targetId","targetSysId").by("sourceId").by("sourceSysId").by("targetId").by("targetSysId");
+        System.out.println(res.toList());
+    }
+
+    @Test
+    public void queryRel() throws Exception {
+        MyLineage o1 = new MyLineage();
+        o1.setId("li0000000015");
+        List<List<MyLineage>> res = janusGraphHelper.queryVertexRel(
+                o1, DepthOpt.IN, 1);
+        res.forEach(System.out::println);
     }
 }

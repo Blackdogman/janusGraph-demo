@@ -7,26 +7,31 @@ import cn.hutool.core.util.ObjUtil;
 import cn.hutool.core.util.StrUtil;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.commons.configuration2.PropertiesConfiguration;
 import org.apache.commons.configuration2.builder.fluent.Configurations;
 import org.apache.commons.configuration2.ex.ConfigurationException;
-import org.apache.tinkerpop.gremlin.process.traversal.P;
+import org.apache.tinkerpop.gremlin.process.traversal.Path;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Edge;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
+import org.locationtech.jts.geomgraph.Depth;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import xyz.rockbdm.annotation.JGVertex;
 import xyz.rockbdm.annotation.JGVertexField;
+import xyz.rockbdm.entity.enums.code.DepthOpt;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.apache.tinkerpop.gremlin.process.traversal.AnonymousTraversalSource.traversal;
+import static org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__.*;
 
 @Component
 public class JanusGraphHelper {
@@ -86,19 +91,6 @@ public class JanusGraphHelper {
         return StrUtil.isBlank(configPath) ? DEFAULT_CONFIG_PATH : configPath;
     }
 
-    /**
-     * 查询value集合
-     *
-     * @return valueMap
-     */
-    public List<Object> valueMap() throws Exception {
-        List<Object> resList = Lists.newArrayList();
-        GraphTraversal<Vertex, Map<Object, Object>> values = g.V().valueMap(true);
-        while (values.hasNext()) {
-            resList.add(values.next());
-        }
-        return resList;
-    }
 
     /**
      * 通过节点id查询节点
@@ -249,6 +241,56 @@ public class JanusGraphHelper {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    /**
+     * 遍历固定深度的结果
+     * @param o 起点对象
+     * @param depthOpt 遍历方向
+     * @param depth 遍历深度
+     * @return 按照路径的集合
+     * @param <T> 所有具有能locate的对象类型
+     */
+    public <T> List<List<T>> queryVertexRel(T o, DepthOpt depthOpt, Integer depth) throws Exception {
+        List<List<T>> resData = Lists.newArrayList();
+        GraphTraversal<Vertex, Vertex> gremlin = this.locateVertexByPrimary(this.getG(), o);
+        switch(depthOpt) {
+            case IN:
+                gremlin.repeat(in().simplePath()).until(where(loops().is(depth).or().inE().count().is(0)));
+                break;
+            case OUT:
+                gremlin.repeat(out().simplePath()).until(where(loops().is(depth).or().outE().count().is(0)));
+                break;
+            default:
+                // FIXME 抛出异常, 参数问题
+        }
+        GraphTraversal<Vertex, Path> pathDataList = gremlin.path().by(valueMap());
+        while (pathDataList.hasNext()) {
+            Path linePath = pathDataList.next();
+            List<T> rowData = Lists.newArrayList();
+            for (Object o1 : linePath) {
+                Map<String, Object> row = Maps.newHashMap();
+                Map o1Map = (Map) o1;
+                o1Map.forEach((key, value) -> {
+                    Object rowValue = null;
+                    if (value instanceof List) {
+                        // 如果为集合, 则判断是否长度为1, 如果为1则把下标为0的记录取出来
+                        List lValue = (List) value;
+                        if (lValue.size() <= 1) {
+                            rowValue = lValue.get(0);
+                        }
+                    }
+                    if (ObjUtil.isNull(rowValue)) {
+                        rowValue = value;
+                    }
+                    row.put(key.toString(), rowValue);
+                });
+                T r1 = (T) BeanUtil.fillBeanWithMap(row, o.getClass().newInstance(), false);
+                rowData.add(r1);
+            }
+            resData.add(rowData);
+        }
+        return resData;
     }
 
     /**
@@ -560,7 +602,6 @@ public class JanusGraphHelper {
         // 如果@JGVertexField的value为空, 则使用field的名称作为label
         return StrUtil.isBlank(propertyLabel) ? field.getName() : propertyLabel;
     }
-
 
     @PostConstruct
     public void postConstruct() throws Exception {
